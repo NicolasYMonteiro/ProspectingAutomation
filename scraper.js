@@ -3,9 +3,15 @@ const mysql = require("mysql2/promise");
 
 const API_KEY = "5aa549fc5da3d9400e82e3bab9f559a07d711a2b6de44645a12885cd14c49efc";
 
-// Configurações para Salvador, BA
-const LOCATION = "Salvador, Bahia";
-const COORDINATES = "@-12.9711,-38.5108,15z";
+// ---- Pegando parâmetros da linha de comando ----
+const args = process.argv.slice(2);
+if (args.length < 2) {
+  console.error("❌ Uso: node scraper.js \"pizzaria,hamburgueria\" \"Salvador, Bahia\"");
+  process.exit(1);
+}
+
+const niches = args[0].split(",").map(n => n.trim());
+const LOCATION = args[1];
 
 // Configurações do banco
 const dbConfig = {
@@ -15,10 +21,39 @@ const dbConfig = {
   database: "leads_db",
 };
 
-// Delay entre requisições para evitar bloqueio
+// Delay entre requisições
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function searchLeads(query, location = LOCATION, maxPages = 3) {
+// ---- Função para buscar coordenadas da cidade ----
+async function getCoordinates(location) {
+  try {
+    const response = await axios.get("https://nominatim.openstreetmap.org/search", {
+      params: {
+        q: location,
+        format: "json",
+        limit: 1
+      },
+      headers: {
+        'User-Agent': 'Your App Name (your@email.com)' // Nominatim requer identificação
+      }
+    });
+
+    if (response.data && response.data.length > 0) {
+      const { lat, lon } = response.data[0];
+      return `@${lat},${lon},14z`;
+    } else {
+      throw new Error("Localização não encontrada");
+    }
+  } catch (err) {
+    console.error("❌ Erro ao buscar coordenadas:", err.message);
+    console.error("💡 Dica: Verifique se a localização está escrita corretamente");
+    process.exit(1);
+  }
+}
+
+
+// ---- Função para buscar leads ----
+async function searchLeads(query, location, coordinates, maxPages = 3) {
   let allResults = [];
 
   for (let page = 0; page < maxPages; page++) {
@@ -29,20 +64,20 @@ async function searchLeads(query, location = LOCATION, maxPages = 3) {
       type: "search",
       api_key: API_KEY,
       start: page * 20,
-      ll: COORDINATES 
+      ll: coordinates,
     };
 
     try {
-      console.log(`📄 Buscando página ${page + 1} para ${query}...`);
+      console.log(`📄 Buscando página ${page + 1} para ${query} em ${location}...`);
       const response = await axios.get("https://serpapi.com/search.json", { params });
 
       if (!response.data.local_results) {
-        console.log(`⚠️  Nenhum resultado encontrado para ${query} na página ${page + 1}`);
+        console.log(`⚠️ Nenhum resultado encontrado para ${query} na página ${page + 1}`);
         break;
       }
 
       allResults = [...allResults, ...response.data.local_results];
-      await delay(2000); // Delay de 2 segundos entre requisições
+      await delay(2000); // 2s entre requisições
     } catch (err) {
       console.error(`❌ Erro na página ${page + 1} para ${query}:`, err.response?.data?.error || err.message);
       break;
@@ -52,17 +87,21 @@ async function searchLeads(query, location = LOCATION, maxPages = 3) {
   return allResults;
 }
 
+// ---- Execução principal ----
 (async () => {
   const connection = await mysql.createConnection(dbConfig);
-  const niches = ["pizzaria", "hamburgueria", "comida japonesa", "delivery"];
   let totalLeads = 0;
 
+  console.log(`📍 Buscando coordenadas de: ${LOCATION}`);
+  const COORDINATES = await getCoordinates(LOCATION);
+  console.log(`✅ Coordenadas encontradas: ${COORDINATES}`);
+
   for (const niche of niches) {
-    console.log(`\n🔍 Iniciando busca por: ${niche}`);
-    const results = await searchLeads(niche);
+    console.log(`\n🔍 Iniciando busca por: ${niche} em ${LOCATION}`);
+    const results = await searchLeads(niche, LOCATION, COORDINATES);
 
     const nicheLeads = results
-      .filter(place => !place.website) // Apenas os sem website
+      .filter(place => !place.website) // Apenas sem site
       .map(place => ({
         nome: place.title,
         telefone: place.phone || "Não disponível",
@@ -76,7 +115,7 @@ async function searchLeads(query, location = LOCATION, maxPages = 3) {
     for (const lead of nicheLeads) {
       try {
         await connection.execute(
-          "INSERT INTO leads (nome, telefone, endereco, nicho, link) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO leads (nome, telefone, endereço, nicho, link) VALUES (?, ?, ?, ?, ?)",
           [lead.nome, lead.telefone, lead.endereco, lead.nicho, lead.link]
         );
       } catch (err) {
