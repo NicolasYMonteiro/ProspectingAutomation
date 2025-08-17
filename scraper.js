@@ -1,7 +1,7 @@
 const axios = require("axios");
 const mysql = require("mysql2/promise");
 
-const API_KEY = "5aa549fc5da3d9400e82e3bab9f559a07d711a2b6de44645a12885cd14c49efc";
+const API_KEY = "";
 
 // ---- Pegando parâmetros da linha de comando ----
 const args = process.argv.slice(2);
