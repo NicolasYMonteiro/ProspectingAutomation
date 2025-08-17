@@ -37,7 +37,7 @@ async function getDailyLeads() {
     const [rows] = await connection.execute(`
       SELECT id, nome, telefone, nicho 
       FROM leads 
-      WHERE id =312
+      WHERE enviado = 0 OR enviado IS NULL
       ORDER BY RAND()
     `, [DAILY_LIMIT]);
 
@@ -74,12 +74,18 @@ async function markAsSent(leadIds) {
 
 // Cria mensagem personalizada
 function createMessage(lead) {
-  return `Olá ${lead.nome.split(' ')[0]}! 👋
+  return `Bom dia! 👋
 
 Meu nome é Nícolas, sou desenvolvedor de sistemas e web sites. 
-Vi que você atua como ${lead.nicho} e gostaria de conversar sobre [OFERTA ESPECÍFICA].
+Perfil profissional: https://www.linkedin.com/in/n%C3%ADcolas-monteiro/
 
-Podemos agendar uma conversa esta semana?`;
+Percebi que seu empreendimento ainda não possui um site e pensei que poderia se interessar pelo meu trabalho.
+Nosso time cria sites lucrativos, modernos e funcionais, que ajudam negócios como o seu a ter mais visibilidade online. 
+Entregamos em até 5 dias úteis, com design personalizado e ao seu gosto.
+
+Se tiver tempo, posso te mostrar alguns trabalhos recentes que já geraram resultados reais para outros clientes. 
+Gostaria de agendar uma rápida conversa para te apresentar as opções?
+`;
 }
 
 // Função de normalização + geração de variações
