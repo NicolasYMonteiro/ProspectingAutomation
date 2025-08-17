@@ -5,13 +5,13 @@ const API_KEY = "5aa549fc5da3d9400e82e3bab9f559a07d711a2b6de44645a12885cd14c49ef
 
 // Configurações para Salvador, BA
 const LOCATION = "Salvador, Bahia";
-const COORDINATES = "@-12.9711,-38.5108,15z"; // Formato correto com zoom (15z)
+const COORDINATES = "@-12.9711,-38.5108,15z";
 
 // Configurações do banco
 const dbConfig = {
   host: "localhost",
-  user: "root",     // ajuste se necessário
-  password: "root", // ajuste se necessário
+  user: "root",     
+  password: "root", 
   database: "leads_db",
 };
 
@@ -29,7 +29,7 @@ async function searchLeads(query, location = LOCATION, maxPages = 3) {
       type: "search",
       api_key: API_KEY,
       start: page * 20,
-      ll: COORDINATES // Usando o formato correto
+      ll: COORDINATES 
     };
 
     try {
@@ -73,7 +73,6 @@ async function searchLeads(query, location = LOCATION, maxPages = 3) {
           : "Não disponível",
       }));
 
-    // Inserindo no banco
     for (const lead of nicheLeads) {
       try {
         await connection.execute(
