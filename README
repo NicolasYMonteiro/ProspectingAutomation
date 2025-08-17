@@ -1,0 +1,120 @@
+INSTRUÇÕES PARA USO DOS SCRIPTS DE SCRAPING E ENVIO WHATSAPP
+
+=============================================================
+1. PRÉ-REQUISITOS
+=============================================================
+- Node.js (v18 ou superior)
+- MySQL ou MariaDB
+- Git (opcional)
+- Conta no SerpAPI (para chave de API)
+
+=============================================================
+2. CONFIGURAÇÃO INICIAL
+=============================================================
+
+2.1. CRIAR BANCO DE DADOS
+1. Acesse o MySQL:
+   mysql -u root -p
+
+2. Execute:
+   CREATE DATABASE leads_db;
+   USE leads_db;
+
+   CREATE TABLE leads (
+     id INT AUTO_INCREMENT PRIMARY KEY,
+     nome VARCHAR(255),
+     telefone VARCHAR(50),
+     endereço VARCHAR(255),
+     nicho VARCHAR(100),
+     link VARCHAR(255),
+     enviado TINYINT DEFAULT 0,
+     data_envio DATETIME
+   );
+
+=============================================================
+3. INSTALAÇÃO
+=============================================================
+
+3.1. CRIAR PASTA DO PROJETO
+mkdir scraper-whatsapp
+cd scraper-whatsapp
+
+3.2. INICIAR PROJETO NODE.JS
+npm init -y
+
+3.3. INSTALAR DEPENDÊNCIAS
+npm install axios mysql2 whatsapp-web.js qrcode-terminal
+
+=============================================================
+4. CONFIGURAÇÃO DOS SCRIPTS
+=============================================================
+
+4.1. scraper.js
+- Cole o primeiro script no arquivo
+- Substitua a API_KEY pela sua chave do SerpAPI
+
+4.2. whatsapp-sender.js
+- Cole o segundo script no arquivo
+
+=============================================================
+5. EXECUÇÃO DO SCRAPER
+=============================================================
+
+5.1. OBTER CHAVE SERPAPI
+- Crie conta em https://serpapi.com/
+- Obtenha sua chave API
+
+5.2. EXECUTAR SCRAPER
+node scraper.js "pizzaria,hamburgueria" "Salvador, Bahia"
+
+Onde:
+- "pizzaria,hamburgueria" = nichos a pesquisar (separar por vírgula)
+- "Salvador, Bahia" = localização para busca
+
+5.3. VERIFICAR DADOS
+mysql -u root -p leads_db -e "SELECT * FROM leads;"
+
+=============================================================
+6. ENVIO VIA WHATSAPP
+=============================================================
+
+6.1. EXECUTAR SCRIPT
+node whatsapp-sender.js
+
+6.2. ESCANEAR QR CODE
+- Abra WhatsApp no celular
+- Menu → Linked Devices → Link a Device
+- Escaneie o QR code no terminal
+
+6.3. MENSAGENS SERÃO ENVIADAS
+- O script envia para 15 leads/dia (padrão)
+- Atualiza status no banco de dados
+
+=============================================================
+7. AJUSTES E PERSONALIZAÇÃO
+=============================================================
+
+7.1. ALTERAR LIMITE DIÁRIO
+Edite whatsapp-sender.js:
+const DAILY_LIMIT = 15; // Altere este valor
+
+7.2. PERSONALIZAR MENSAGEM
+Edite a função createMessage() no whatsapp-sender.js
+
+=============================================================
+8. DICAS IMPORTANTES
+=============================================================
+
+- Não exceda 20 mensagens/hora no WhatsApp
+- Use número Business para melhor resultados
+- Teste diferentes nichos e localizações
+- Para mais resultados, ajuste maxPages no scraper.js
+
+=============================================================
+9. SOLUÇÃO DE PROBLEMAS
+=============================================================
+
+- Erros de conexão MySQL: verifique senha e usuário
+- QR Code não funciona: reinicie o script
+- Mensagens não enviando: verifique formato dos números
+- API limitada: verifique plano no SerpAPI
