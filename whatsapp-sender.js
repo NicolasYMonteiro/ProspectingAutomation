@@ -2,6 +2,15 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const mysql = require('mysql2/promise');
 
+// === Contadores globais do histórico ===
+let stats = {
+  enviados: 0,
+  falhos: 0,
+  duplicados: 0,
+  total: 0,
+  leads: []
+};
+
 // Config MySQL
 const dbConfig = {
   host: 'localhost',
@@ -39,7 +48,8 @@ async function getDailyLeads() {
       FROM leads 
       WHERE enviado = 0 OR enviado IS NULL
       ORDER BY RAND()
-    `, [DAILY_LIMIT]);
+      LIMIT ${DAILY_LIMIT}
+    `); 
 
     return rows;
   } catch (error) {
@@ -62,9 +72,10 @@ async function markAsSent(leadIds) {
     await connection.execute(`
       UPDATE leads 
       SET enviado = 1, data_envio = NOW()
-        WHERE id IN  (${placeholders})
+      WHERE id IN (${placeholders})
     `, leadIds);
 
+    console.log(`🟢 Leads atualizados no banco: ${leadIds.join(', ')}`);
   } catch (error) {
     console.error('Erro ao marcar leads como enviados:', error);
   } finally {
@@ -72,20 +83,65 @@ async function markAsSent(leadIds) {
   }
 }
 
+// Marca leads como falhos (não enviados)
+async function markAsFailed(leadIds) {
+  if (!leadIds.length) return;
+
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+    const placeholders = leadIds.map(() => '?').join(',');
+
+    await connection.execute(`
+      UPDATE leads 
+      SET enviado = 1, status_envio = 2, data_envio = NOW()
+      WHERE id IN (${placeholders})
+    `, leadIds);
+
+    console.log(`🔴 Leads marcados como falhos: ${leadIds.join(', ')}`);
+  } catch (error) {
+    console.error('Erro ao marcar leads como falhos:', error);
+  } finally {
+    if (connection) await connection.end();
+  }
+}
+
+// Marca todos os duplicados do número como enviados
+async function markDuplicatesAsSent(telefone) {
+  let connection;
+  try {
+    connection = await mysql.createConnection(dbConfig);
+    const [rows] = await connection.execute(`
+      SELECT id FROM leads WHERE telefone = ? AND (enviado = 0 OR enviado IS NULL)
+    `, [telefone]);
+
+    if (rows.length > 1) {
+      const ids = rows.map(r => r.id);
+      await markAsSent(ids);
+      stats.duplicados += (ids.length - 1); // conta duplicados (menos o principal enviado)
+
+      console.log(`📋 Número duplicado encontrado (${telefone}), marcando leads duplicados: ${ids.join(', ')}`);
+    }
+  } catch (error) {
+    console.error('Erro ao verificar duplicados:', error);
+  } finally {
+    if (connection) await connection.end();
+  }
+}
+
+
 // Cria mensagem personalizada
 function createMessage(lead) {
-  return `Bom dia! 👋
+  return `Bom dia, Tudo bem? 👋
 
 Meu nome é Nícolas, sou desenvolvedor de sistemas e web sites. 
+Percebi que seu empreendimento ainda não possui um site e pensei que poderia se interessar.
+
+Criamos sites rápidos, bonitos e funcionais, entregues em até 5 dias, com domínio exclusiso e atrativo para novos clientes.
 Perfil profissional: https://www.linkedin.com/in/n%C3%ADcolas-monteiro/
 
-Percebi que seu empreendimento ainda não possui um site e pensei que poderia se interessar pelo meu trabalho.
-Nosso time cria sites lucrativos, modernos e funcionais, que ajudam negócios como o seu a ter mais visibilidade online. 
-Entregamos em até 5 dias úteis, com design personalizado e ao seu gosto.
-
-Se tiver tempo, posso te mostrar alguns trabalhos recentes que já geraram resultados reais para outros clientes. 
-Gostaria de agendar uma rápida conversa para te apresentar as opções?
-`;
+Se quiser, posso te mostrar alguns trabalhos recentes que já geraram resultados lucrativos. 
+Tem interesse em conhecer mais?`;
 }
 
 // Função de normalização + geração de variações
@@ -151,6 +207,7 @@ async function sendMessageWithConfirmation(number, message) {
   }
 }
 
+
 // Função principal
 async function main() {
   console.log('\n🚀 Buscando leads...');
@@ -163,8 +220,6 @@ async function main() {
 
   console.log(`Encontrados ${leads.length} leads. Enviando mensagens...\n`);
 
-  const sentIds = [];
-
   for (const lead of leads) {
     const message = createMessage(lead);
 
@@ -172,19 +227,35 @@ async function main() {
     const result = await sendMessageWithConfirmation(lead.telefone, message);
 
     if (result.success) {
-      sentIds.push(lead.id);
+      await markAsSent([lead.id]);
+
+      // verifica duplicados e marca
+      await markDuplicatesAsSent(lead.telefone);
+
+      stats.leads.push(`${lead.id} com o telefone: ${lead.telefone}`)
+      stats.enviados++;
+    } else {
+      await markAsFailed([lead.id]);
+      stats.falhos++;
     }
 
-    // Aguardar alguns segundos entre mensagens para evitar bloqueio
     await new Promise(resolve => setTimeout(resolve, 5000));
   }
 
-  if (sentIds.length) {
-    await markAsSent(sentIds);
-    console.log(`\n✅ ${sentIds.length} leads marcados como enviados.`);
-  } else {
-    console.log('\n⚠️ Nenhuma mensagem foi enviada com sucesso.');
-  }
+  // Exibe o histórico no final
+  showFinalStats();
+}
+
+
+
+function showFinalStats() {
+  console.log("\n📊 === HISTÓRICO FINAL ===");
+  console.log(`✅ Leads enviados com sucesso: ${stats.enviados}`);
+  console.log(`❌ Leads falhos: ${stats.falhos}`);
+  console.log(`📋 Leads duplicados ignorados: ${stats.duplicados}`);
+  console.log(`📦 Total de leads processados: ${stats.total}`);
+  console.log(`📊 Leads contatados com sucesso: ${stats.leads} `)
+  console.log("=============================\n");
 }
 
 // Eventos do WhatsApp
@@ -206,7 +277,6 @@ whatsappClient.on('ready', () => {
   console.log('\nWhatsApp conectado com sucesso!');
   main();
 });
-
 whatsappClient.on('disconnected', () => {
   console.log('\nWhatsApp desconectado');
   process.exit();
@@ -217,3 +287,5 @@ whatsappClient.initialize().catch(err => {
   console.error('\nErro na inicialização:', err);
   process.exit(1);
 });
+
+
